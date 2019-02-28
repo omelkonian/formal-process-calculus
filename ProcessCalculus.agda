@@ -113,10 +113,11 @@ module Simple where
         ∅
       ∎
 
-  open import Data.Nat using (zero; suc)
-  open import Data.List using (map; upTo; length; concat)
+  open import Function using (_$_)
+  open import Data.Nat using (zero; suc; _+_)
+  open import Data.List using (map; upTo; length; concat; concatMap)
 
-  open import Relation.Binary.PropositionalEquality             using (_≡_; setoid)
+  open import Relation.Binary.PropositionalEquality             using (_≡_; refl; setoid)
   open import Data.List.Membership.Setoid (setoid (List Label)) using (_∈_)
   open import Data.List.Relation.Permutation.Inductive          using (_↭_)
 
@@ -125,17 +126,49 @@ module Simple where
   insert y []       (suc n) = [ y ]
   insert y (x ∷ xs) (suc n) = x ∷ insert y xs n
 
+  insertNonDet : ∀ {A : Set} → A → List A → List (List A)
+  insertNonDet x xs = map (insert x xs) (upTo $ length xs + 1)
+
+  _ : insertNonDet 1 [] ≡ [ [ 1 ] ]
+  _ = refl
+
+  _ : insertNonDet 1 [ 2 ] ≡ (1 ∷ 2 ∷ []) ∷ (2 ∷ 1 ∷ []) ∷ []
+  _ = refl
+
   interleave : ∀ {A : Set} → List A → List A → List (List A)
-  interleave [] ys = [ ys ]
-  interleave (x ∷ xs) ys =
-    let xys = interleave xs ys
-        is  = upTo (length xys)
-    in  {!map (insert x xys) is!}
+  interleave []       ys = [ ys ]
+  interleave (x ∷ xs) ys = concatMap (insertNonDet x) (interleave xs ys)
+
+  _ : interleave [ 1 ]  [ 2 ] ≡ (1 ∷ 2 ∷ []) ∷ (2 ∷ 1 ∷ []) ∷ []
+  _ = refl
+
+  _ : interleave [ 1 ]  (2 ∷ 3 ∷ []) ≡ (1 ∷ 2 ∷ 3 ∷ [])
+                                     ∷ (2 ∷ 1 ∷ 3 ∷ [])
+                                     ∷ (2 ∷ 3 ∷ 1 ∷ [])
+                                     ∷ []
+  _ = refl
+
+  interleave′ : ∀ {A : Set} → List (List A) → List (List A) → List (List A)
+  interleave′ xss yss =
+    let t = map (λ ys → map (interleave ys) xss) yss -- ∈ List³ A
+    in  concat $ concat t
+
+  -- _ : interleave′ [] [ [ 1 ] ] ≡ [ [ 1 ] ]
+  -- _ = refl
+
+  -- _ : interleave′ ([ [ 1 ] ]) ([]) ≡ [ [ 1 ] ]
+  -- _ = refl
 
   run : Process → List (List Label)
   run ∅        = [ [] ]
   run (emit x) = [ [ x ] ]
-  run (P ∣ Q)  = concat (interleave (run P) (run Q))
+  run (P ∣ Q)  = interleave′ (run P) (run Q)
+
+  _ : run (emit 1) ≡ [ [ 1 ] ]
+  _ = refl
+
+  -- _ : run (emit 1 ∣ emit 2) ≡ (1 ∷ 2 ∷ []) ∷ (2 ∷ 1 ∷ []) ∷ []
+  -- _ = refl
 
   run-sound : ∀ {P : Process} {ls : List Label}
     → ls ∈ run P
@@ -157,7 +190,6 @@ module Simple where
 
 module Schedulers where
 
-
 -----------------------------------------------
 -- 2. Canonical forms
 
@@ -167,7 +199,6 @@ module Canonical where
 -- 3. Relational specification (list results)
 
 module RelSpec where
-
 
 -----------------------------------------------
 -- 4. Weakening
