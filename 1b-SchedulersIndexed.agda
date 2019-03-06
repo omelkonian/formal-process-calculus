@@ -1,7 +1,7 @@
 --------------------------------------------------------------------------------
 -- Factor out the non-deterministic part by parametrizing over a scheduler.
 
-module 1-Schedulers where
+module 1b-SchedulersIndexed where
 
 open import Function     using (_∋_)
 open import Data.Product using (_×_; _,_; Σ; Σ-syntax)

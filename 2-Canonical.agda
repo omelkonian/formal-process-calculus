@@ -4,12 +4,14 @@
 module 2-Canonical where
 
 open import Function   using (_$_)
-open import Data.Nat   using (ℕ; _≤?_)
+open import Data.Empty using (⊥; ⊥-elim)
+open import Data.Nat   using (ℕ; _≤?_; _≤_; _≰_)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Data.List  using (List; []; _∷_; [_]; _++_)
 
 open import Relation.Nullary using (yes; no)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Nullary using (¬_)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; cong)
 
 ------------
 -- Processes
@@ -25,7 +27,7 @@ data Process : Set where
   -- atomic action
   emit : Label → Process
 
-  -- sequential composition (leave out for now)
+  -- sequential composition
   _∶_ : Process → Process → Process
 
   -- parallel composition
@@ -34,25 +36,53 @@ data Process : Set where
 infixr 5 _∶_
 infixr 4 _∣_
 
+--------------
+-- Equivalence
+
+-- merge two sorted lists
+merge : List Label → List Label → List Label
+merge []       ys       = ys
+merge xs       []       = xs
+merge (x ∷ xs) (y ∷ ys) with x ≤? y
+... | yes _ = x ∷ merge xs (y ∷ ys)
+... | no  _ = y ∷ merge (x ∷ xs) ys
+
 toCanonical : Process → List Label
 toCanonical ∅        = []
 toCanonical (emit l) = [ l ]
 toCanonical (p ∶ q)  = toCanonical p ++ toCanonical q
 toCanonical (p ∣ q)  = merge (toCanonical p) (toCanonical q)
-  where
-    -- merge two sorted lists
-    merge : List Label → List Label → List Label
-    merge []       ys       = ys
-    merge xs       []       = xs
-    merge (x ∷ xs) (y ∷ ys) with x ≤? y
-    ... | yes _ = x ∷ merge xs (y ∷ ys)
-    ... | no  _ = y ∷ merge (x ∷ xs) ys
 
---------------
--- Equivalence
-
+infix 3 _≈_
 _≈_ : Process → Process → Set
 p ≈ q = toCanonical p ≡ toCanonical q
+
+-- Properties
+
+x≰y∧y≰x : ∀ {x y} → x ≰ y → y ≰ x → ⊥
+x≰y∧y≰x x≰y y≰x = {!!}
+
+x≤y∧y≤x⇒x≡y : ∀ {x y} → x ≤ y → y ≤ x → x ≡ y
+x≤y∧y≤x⇒x≡y x≤y y≤x = {!!}
+
+merge-commutative : ∀ {xs ys} → merge xs ys ≡ merge ys xs
+merge-commutative {[]}     {[]}     = refl
+merge-commutative {[]}     {y ∷ ys} = refl
+merge-commutative {x ∷ xs} {[]}     = refl
+merge-commutative {x ∷ xs} {y ∷ ys}
+    with x ≤? y | y ≤? x
+... | yes x≤y | no ¬y≤x = cong (x ∷_) (merge-commutative {xs} {y ∷ ys})
+... | no ¬x≤y | yes y≤x = cong (y ∷_) (merge-commutative {x ∷ xs} {ys})
+... | no ¬x≤y | no ¬y≤x = ⊥-elim (x≰y∧y≰x ¬x≤y ¬y≤x)
+... | yes x≤y | yes y≤x
+    with x≤y∧y≤x⇒x≡y x≤y y≤x
+... | refl = cong (x ∷_) {!!}
+
+
+∣-commutative : ∀ {P Q} → P ∣ Q ≈ Q ∣ P
+∣-commutative {P} {Q}
+  rewrite merge-commutative {toCanonical P} {toCanonical Q}
+        = refl
 
 ------------
 -- Semantics
@@ -71,31 +101,31 @@ data _—→⟦_⟧_ : Process → Maybe Label → Process → Set where
       ---------------------
     → emit l —→⟦ just l ⟧ ∅
 
-  [SEQ_L] : ∀ {P P′ Q l}
+  [SEQ-L] : ∀ {P P′ Q l}
 
     → P —→⟦ l ⟧ P′
       --------------------
     → P ∶ Q —→⟦ l ⟧ P′ ∶ Q
 
-  [SEQ_R] : ∀ {Q Q′ l}
+  [SEQ-R] : ∀ {Q Q′ l}
 
     → Q —→⟦ l ⟧ Q′
       --------------------
     → ∅ ∶ Q —→⟦ l ⟧ ∅ ∶ Q′
 
-  [STEP_L] : ∀ {P P′ Q l}
+  [STEP-L] : ∀ {P P′ Q l}
 
     → P —→⟦ l ⟧ P′
       --------------------
     → P ∣ Q —→⟦ l ⟧ P′ ∣ Q
 
-  [STEP_R] : ∀ {P Q Q′ l}
+  [STEP-R] : ∀ {P Q Q′ l}
 
     → Q —→⟦ l ⟧ Q′
       --------------------
     → P ∣ Q —→⟦ l ⟧ P ∣ Q′
 
-  [EQUIV] : ∀ {P P′}
+  [EQUIV] : ∀ {P P′}  -- Loses 'uniqueness' of derivations
 
     → P ≈ P′
       ------------------
@@ -130,9 +160,9 @@ _ : emit 1 ∣ emit 2 —↠⟦ 1 ∷ 2 ∷ [] ⟧ ∅
 _ =
   begin
     emit 1 ∣ emit 2
-  —→⟦ just 1 ⟧⟨ [STEP_L] [EMIT] ⟩
+  —→⟦ just 1 ⟧⟨ [STEP-L] [EMIT] ⟩
     ∅ ∣ emit 2
-  —→⟦ just 2 ⟧⟨ [STEP_R] [EMIT] ⟩
+  —→⟦ just 2 ⟧⟨ [STEP-R] [EMIT] ⟩
     ∅ ∣ ∅
   —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
     ∅
@@ -142,9 +172,9 @@ _ : emit 1 ∣ emit 2 —↠⟦ 2 ∷ 1 ∷ [] ⟧ ∅
 _ =
   begin
     emit 1 ∣ emit 2
-  —→⟦ just 2 ⟧⟨ [STEP_R] [EMIT] ⟩
+  —→⟦ just 2 ⟧⟨ [STEP-R] [EMIT] ⟩
     emit 1 ∣ ∅
-  —→⟦ just 1 ⟧⟨ [STEP_L] [EMIT] ⟩
+  —→⟦ just 1 ⟧⟨ [STEP-L] [EMIT] ⟩
     ∅ ∣ ∅
   —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
     ∅
@@ -156,9 +186,9 @@ _ : (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
 _ =
   begin
     (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
-  —→⟦ just 1 ⟧⟨ [STEP_L] $ [STEP_R] $ [STEP_R] $ [STEP_L] [EMIT] ⟩
+  —→⟦ just 1 ⟧⟨ [STEP-L] $ [STEP-R] $ [STEP-R] $ [STEP-L] [EMIT] ⟩
     (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
-  —→⟦ just 2 ⟧⟨ [STEP_R] $ [STEP_L] [EMIT] ⟩
+  —→⟦ just 2 ⟧⟨ [STEP-R] $ [STEP-L] [EMIT] ⟩
     (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
   —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
     emit 3
@@ -174,27 +204,27 @@ _ =
       emit 11 ∶ emit 12
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟦ just 11 ⟧⟨ [STEP_L] $ [SEQ_L] [EMIT] ⟩
+  —→⟦ just 11 ⟧⟨ [STEP-L] $ [SEQ-L] [EMIT] ⟩
       ∅       ∶ emit 12
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟦ just 12 ⟧⟨ [STEP_L] $ [SEQ_R] [EMIT] ⟩
+  —→⟦ just 12 ⟧⟨ [STEP-L] $ [SEQ-R] [EMIT] ⟩
       ∅       ∶ ∅
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟦ just 21 ⟧⟨ [STEP_R] $ [STEP_L] $ [SEQ_L] [EMIT] ⟩
+  —→⟦ just 21 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-L] [EMIT] ⟩
       ∅       ∶ ∅
     ∣ ∅       ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟦ just 22 ⟧⟨ [STEP_R] $ [STEP_L] $ [SEQ_R] [EMIT] ⟩
+  —→⟦ just 22 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-R] [EMIT] ⟩
       ∅       ∶ ∅
     ∣ ∅       ∶ ∅
     ∣ emit 31 ∶ emit 32
-  —→⟦ just 31 ⟧⟨ [STEP_R] $ [STEP_R] $ [SEQ_L] [EMIT] ⟩
+  —→⟦ just 31 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-L] [EMIT] ⟩
       ∅       ∶ ∅
     ∣ ∅       ∶ ∅
     ∣ ∅       ∶ emit 32
-  —→⟦ just 32 ⟧⟨ [STEP_R] $ [STEP_R] $ [SEQ_R] [EMIT] ⟩
+  —→⟦ just 32 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-R] [EMIT] ⟩
       ∅       ∶ ∅
     ∣ ∅       ∶ ∅
     ∣ ∅       ∶ ∅
