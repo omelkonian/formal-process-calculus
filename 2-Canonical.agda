@@ -47,6 +47,8 @@ merge (x ∷ xs) (y ∷ ys) with x ≤? y
 ... | yes _ = x ∷ merge xs (y ∷ ys)
 ... | no  _ = y ∷ merge (x ∷ xs) ys
 
+-- T0D0 thats wrong for nested things like ((_ | _) : (_ | _))
+--   * maybe disallow these by having [Process] instead of _|_
 toCanonical : Process → List Label
 toCanonical ∅        = []
 toCanonical (emit l) = [ l ]
@@ -84,6 +86,26 @@ merge-commutative {x ∷ xs} {y ∷ ys}
   rewrite merge-commutative {toCanonical P} {toCanonical Q}
         = refl
 
+-- Equivalence I: Identity
+_ : emit 1 ∣ emit 21 ∶ emit 22
+  ≈ emit 1 ∣ emit 21 ∶ emit 22
+_ = refl
+
+-- Equivalence II: Prepend ∅
+_ : emit 1 ∣ emit 21 ∶ emit 22
+  ≈ ∅ ∣ emit 1 ∣ emit 21 ∶ emit 22
+_ = refl
+
+-- Equivalence III: Nest differently
+_ : emit 11 ∶ emit 12 ∶ emit 13 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 31 ∶ emit 32 ∶ emit 33
+  ≈ ((emit 11 ∶ emit 12) ∶ emit 13 ∣ (emit 21 ∶ emit 22) ∶ emit 23) ∣ (emit 31 ∶ emit 32) ∶ emit 33
+_ = refl
+
+-- Equivalence IV: Commute _∣_
+_ : emit 11 ∶ emit 12 ∶ emit 13 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 31 ∶ emit 32 ∶ emit 33
+  ≈ emit 31 ∶ emit 32 ∶ emit 33 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 11 ∶ emit 12 ∶ emit 13
+_ = refl
+
 ------------
 -- Semantics
 
@@ -111,7 +133,7 @@ data _—→⟦_⟧_ : Process → Maybe Label → Process → Set where
 
     → Q —→⟦ l ⟧ Q′
       --------------------
-    → ∅ ∶ Q —→⟦ l ⟧ ∅ ∶ Q′
+    → ∅ ∶ Q —→⟦ l ⟧ Q′
 
   [STEP-L] : ∀ {P P′ Q l}
 
@@ -156,7 +178,10 @@ begin_ : ∀ {P Q ls}
   → P —↠⟦ ls ⟧ Q
 begin P—↠Q = P—↠Q
 
-_ : emit 1 ∣ emit 2 —↠⟦ 1 ∷ 2 ∷ [] ⟧ ∅
+-- Derivation I: Simple parallel (in-order)
+_ : emit 1 ∣ emit 2
+  —↠⟦ 1 ∷ 2 ∷ [] ⟧
+    ∅
 _ =
   begin
     emit 1 ∣ emit 2
@@ -168,6 +193,7 @@ _ =
     ∅
   ∎
 
+-- Derivation I': Simple parallel (out-of-order)
 _ : emit 1 ∣ emit 2 —↠⟦ 2 ∷ 1 ∷ [] ⟧ ∅
 _ =
   begin
@@ -180,9 +206,10 @@ _ =
     ∅
   ∎
 
+-- Derivation II: Multiple parallel (in-order)
 _ : (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
-  —↠⟦ 1 ∷ 2 ∷ [] ⟧
-    emit 3
+  —↠⟦ 1 ∷ 2 ∷ 3 ∷ [] ⟧
+    ∅
 _ =
   begin
     (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
@@ -190,10 +217,58 @@ _ =
     (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
   —→⟦ just 2 ⟧⟨ [STEP-R] $ [STEP-L] [EMIT] ⟩
     (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+  —→⟦ just 3 ⟧⟨ [STEP-R] $ [STEP-R] $ [STEP-R] $ [STEP-L] [EMIT] ⟩
+    (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
   —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
-    emit 3
+    ∅
   ∎
 
+-- Derivation II': Multiple parallel (out-of-order)
+_ : (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+  —↠⟦ 2 ∷ 1 ∷ 3 ∷ [] ⟧
+    ∅
+_ =
+  begin
+    (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+  —→⟦ just 2 ⟧⟨ [STEP-R] $ [STEP-L] [EMIT] ⟩
+    (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+  —→⟦ just 1 ⟧⟨ [STEP-L] $ [STEP-R] $ [STEP-R] $ [STEP-L] [EMIT] ⟩
+    (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+  —→⟦ just 3 ⟧⟨ [STEP-R] $ [STEP-R] $ [STEP-R] $ [STEP-L] [EMIT] ⟩
+    (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
+  —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
+    ∅
+  ∎
+
+-- Derivation III: Simple sequential
+_ : emit 1 ∶ emit 2
+  —↠⟦ 1 ∷ 2 ∷ [] ⟧
+    ∅
+_ = begin
+      emit 1 ∶ emit 2
+    —→⟦ just 1 ⟧⟨ [SEQ-L] [EMIT] ⟩
+      ∅ ∶ emit 2
+    —→⟦ just 2 ⟧⟨ [SEQ-R] [EMIT] ⟩
+      ∅
+    ∎
+
+-- Derivation IV: Multiple sequential
+_ : (∅ ∶ ∅ ∶ emit 1 ∶ ∅) ∶ emit 2 ∶ ∅ ∶ emit 3 ∶ ∅
+   —↠⟦ 1 ∷ 2 ∷ 3 ∷ [] ⟧
+    ∅
+_ = begin
+      (∅ ∶ ∅ ∶ emit 1 ∶ ∅) ∶ emit 2 ∶ ∅ ∶ emit 3 ∶ ∅
+    —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
+      emit 1 ∶ emit 2 ∶ emit 3
+    —→⟦ just 1 ⟧⟨ [SEQ-L] [EMIT] ⟩
+      ∅ ∶ emit 2 ∶ emit 3
+    —→⟦ just 2 ⟧⟨ [SEQ-R] $ [SEQ-L] [EMIT] ⟩
+      ∅ ∶ emit 3
+    —→⟦ just 3 ⟧⟨ [SEQ-R] [EMIT] ⟩
+      ∅
+    ∎
+
+-- Derivation V: Simple sequential+parallel (in-order)
 _ : emit 11 ∶ emit 12
   ∣ emit 21 ∶ emit 22
   ∣ emit 31 ∶ emit 32
@@ -209,25 +284,105 @@ _ =
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
   —→⟦ just 12 ⟧⟨ [STEP-L] $ [SEQ-R] [EMIT] ⟩
-      ∅       ∶ ∅
+      ∅
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
   —→⟦ just 21 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-L] [EMIT] ⟩
-      ∅       ∶ ∅
+      ∅
     ∣ ∅       ∶ emit 22
     ∣ emit 31 ∶ emit 32
   —→⟦ just 22 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-R] [EMIT] ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+      ∅
+    ∣ ∅
     ∣ emit 31 ∶ emit 32
   —→⟦ just 31 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-L] [EMIT] ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+      ∅
+    ∣ ∅
     ∣ ∅       ∶ emit 32
   —→⟦ just 32 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-R] [EMIT] ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+      ∅
+    ∣ ∅
+    ∣ ∅
   —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
     ∅
   ∎
+
+-- Derivation V': Simple sequential+parallel (out-of-order)
+_ : emit 11 ∶ emit 12
+  ∣ emit 21 ∶ emit 22
+  ∣ emit 31 ∶ emit 32
+  —↠⟦ 21 ∷ 31 ∷ 22 ∷ 11 ∷ 12 ∷ 32 ∷ [] ⟧
+    ∅
+_ =
+  begin
+      emit 11 ∶ emit 12
+    ∣ emit 21 ∶ emit 22
+    ∣ emit 31 ∶ emit 32
+  —→⟦ just 21 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-L] [EMIT] ⟩
+      emit 11 ∶ emit 12
+    ∣ ∅       ∶ emit 22
+    ∣ emit 31 ∶ emit 32
+  —→⟦ just 31 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-L] [EMIT] ⟩
+      emit 11 ∶ emit 12
+    ∣ ∅       ∶ emit 22
+    ∣ ∅       ∶ emit 32
+  —→⟦ just 22 ⟧⟨ [STEP-R] $ [STEP-L] $ [SEQ-R] [EMIT] ⟩
+      emit 11 ∶ emit 12
+    ∣ ∅
+    ∣ ∅       ∶ emit 32
+  —→⟦ just 11 ⟧⟨ [STEP-L] $ [SEQ-L] [EMIT] ⟩
+      ∅       ∶ emit 12
+    ∣ ∅
+    ∣ ∅       ∶ emit 32
+  —→⟦ just 12 ⟧⟨ [STEP-L] $ [SEQ-R] [EMIT] ⟩
+      ∅
+    ∣ ∅
+    ∣ ∅       ∶ emit 32
+  —→⟦ just 32 ⟧⟨ [STEP-R] $ [STEP-R] $ [SEQ-R] [EMIT] ⟩
+      ∅
+    ∣ ∅
+    ∣ ∅
+  —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
+    ∅
+  ∎
+
+-- Derivation VI: Complex sequential+parallel
+_ : ( emit 1
+    ∣ emit 11 ∶ emit 12 )
+  ∶ ( emit 21 ∶ emit 22
+    ∣ emit 2 )
+  —↠⟦ 11 ∷ 1 ∷ 12 ∷ 21 ∷ 2 ∷ 22 ∷ [] ⟧
+    ∅
+_ = begin
+      ( emit 1
+      ∣ emit 11 ∶ emit 12 )
+    ∶ ( emit 21 ∶ emit 22
+      ∣ emit 2 )
+    —→⟦ just 11 ⟧⟨ [SEQ-L] $ [STEP-R] $ [SEQ-L] [EMIT] ⟩
+      ( emit 1
+      ∣ ∅ ∶ emit 12 )
+    ∶ ( emit 21 ∶ emit 22
+      ∣ emit 2 )
+    —→⟦ just 1 ⟧⟨ [SEQ-L] $ [STEP-L] [EMIT] ⟩
+      ( ∅
+      ∣ ∅ ∶ emit 12 )
+    ∶ ( emit 21 ∶ emit 22
+      ∣ emit 2 )
+    —→⟦ just 12 ⟧⟨ [SEQ-L] $ [STEP-R] $ [SEQ-R] [EMIT] ⟩
+      ( ∅ ∣ ∅ )
+    ∶ ( emit 21 ∶ emit 22
+      ∣ emit 2 )
+    —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
+      emit 21 ∶ emit 22
+    ∣ emit 2
+    —→⟦ just 21 ⟧⟨ [STEP-L] $ [SEQ-L] [EMIT] ⟩
+      ∅ ∶ emit 22
+    ∣ emit 2
+    —→⟦ just 2 ⟧⟨ [STEP-R] [EMIT] ⟩
+      ∅ ∶ emit 22
+    ∣ ∅
+    —→⟦ just 22 ⟧⟨ [STEP-L] $ [SEQ-R] [EMIT] ⟩
+      ∅ ∣ ∅
+    —→⟦ nothing ⟧⟨ [EQUIV] refl ⟩
+      ∅
+    ∎

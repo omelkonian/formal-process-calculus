@@ -50,7 +50,7 @@ infix  3 _—→_
 infix  2 _—↠⟦_⟧_
 
 infix  1 begin_
-infixr 2 _—→⟨_∋_⟩_
+infixr 2 _—→⟦_⟧⟨_∋_⟩_
 infix  3 _∎
 
 data _—→_ : Process → List (Label × Process) → Set where
@@ -80,7 +80,7 @@ data _—→_ : Process → List (Label × Process) → Set where
     → {pr : T (hasTerminated P)}
     → Q —→ Qs
       -----------------------------
-    → P ∶ Q —→ map (map₂ (P ∶_)) Qs
+    → P ∶ Q —→ Qs
 
   [STEP] : ∀ {P Q : Process} {Ps Qs : List (Label × Process)}
 
@@ -96,13 +96,14 @@ _ : emit 1 ∣ emit 2 —→ (1 , ∅ ∣ emit 2)
                      ∷ []
 _ = [STEP] [EMIT] [EMIT]
 
+
 _ : emit 1 ∶ emit 2 —→ [ (1 , ∅ ∶ emit 2) ]
 _ = [SEQ-L] [EMIT]
 
-_ : ∅ ∶ emit 2 —→ [ (2 , ∅ ∶ ∅) ]
+_ : ∅ ∶ emit 2 —→ [ (2 , ∅) ]
 _ = [SEQ-R] [EMIT]
 
-_ : ∅ ∶ ∅ ∶ emit 2 —→ [ (2 , ∅ ∶ ∅ ∶ ∅) ]
+_ : ∅ ∶ ∅ ∶ emit 2 —→ [ (2 , ∅) ]
 _ = [SEQ-R] $ [SEQ-R] [EMIT]
 
 {-
@@ -141,8 +142,9 @@ data _—↠⟦_⟧_ : Process → List Label → Process → Set where
       -------------
     → P —↠⟦ [] ⟧ P
 
-  _—→⟨_∋_⟩_ : ∀ {Ps P′ Q l ls}
+  _—→⟦_⟧⟨_∋_⟩_ : ∀ {Ps P′ Q ls}
     → (P : Process)
+    → (l : Label)
     → P —→ Ps
     → (l , P′) ∈ Ps
     → P′ —↠⟦ ls ⟧ Q
@@ -155,100 +157,174 @@ begin_ : ∀ {P Q ls}
   → P —↠⟦ ls ⟧ Q
 begin P—↠Q = P—↠Q
 
-_ : emit 1 ∣ emit 2 —↠⟦ 1 ∷ 2 ∷ [] ⟧ ∅ ∣ ∅
+-- Derivation I: Simple parallel (in-order)
+_ : emit 1 ∣ emit 2
+  —↠⟦ 1 ∷ 2 ∷ [] ⟧
+    ∅ ∣ ∅
 _ =
   begin
     emit 1 ∣ emit 2
-  —→⟨ [STEP] [EMIT] [EMIT] ∋ here refl ⟩
+  —→⟦ 1 ⟧⟨ [STEP] [EMIT] [EMIT] ∋ here refl ⟩
     ∅ ∣ emit 2
-  —→⟨ [STEP] [EMPTY] [EMIT] ∋ here refl ⟩
+  —→⟦ 2 ⟧⟨ [STEP] [EMPTY] [EMIT] ∋ here refl ⟩
     ∅ ∣ ∅
   ∎
 
-_ : emit 1 ∣ emit 2 —↠⟦ 2 ∷ 1 ∷ [] ⟧ ∅ ∣ ∅
+-- Derivation I': Simple parallel (out-of-order)
+_ : emit 1 ∣ emit 2
+  —↠⟦ 2 ∷ 1 ∷ [] ⟧
+    ∅ ∣ ∅
 _ =
   begin
     emit 1 ∣ emit 2
-  —→⟨ [STEP] [EMIT] [EMIT] ∋ there (here refl) ⟩
+  —→⟦ 2 ⟧⟨ [STEP] [EMIT] [EMIT] ∋ there (here refl) ⟩
     emit 1 ∣ ∅
-  —→⟨ [STEP] [EMIT] [EMPTY] ∋ here refl ⟩
+  —→⟦ 1 ⟧⟨ [STEP] [EMIT] [EMPTY] ∋ here refl ⟩
     ∅ ∣ ∅
   ∎
 
+-- Derivation II: Multiple parallel (in-order)
+_ : (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+  —↠⟦ 1 ∷ 2 ∷ 3 ∷ [] ⟧
+    (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
+_ = begin
+      (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 1 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+                    ([STEP] [EMIT]  $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ here refl ⟩
+      (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 2 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMPTY] [EMPTY])
+                    ([STEP] [EMIT]  $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ here refl ⟩
+      (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 3 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMPTY] [EMPTY])
+                    ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ here refl ⟩
+      (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
+    ∎
+
+-- Derivation II': Multiple parallel (out-of-order)
+_ : (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+  —↠⟦ 2 ∷ 1 ∷ 3 ∷ [] ⟧
+    (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
+_ = begin
+      (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ emit 2 ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 2 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+                    ([STEP] [EMIT]  $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ there (here refl) ⟩
+      (∅ ∣ ∅ ∣ emit 1 ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 1 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+                    ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ here refl ⟩
+      (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ emit 3 ∣ ∅
+    —→⟦ 3 ⟧⟨ [STEP] ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMPTY] [EMPTY])
+                    ([STEP] [EMPTY] $ [STEP] [EMPTY] $ [STEP] [EMIT] [EMPTY])
+             ∋ here refl ⟩
+      (∅ ∣ ∅ ∣ ∅ ∣ ∅) ∣ ∅ ∣ ∅ ∣ ∅ ∣ ∅
+    ∎
+
+-- Derivation III: Simple sequential
+_ : emit 1 ∶ emit 2
+  —↠⟦ 1 ∷ 2 ∷ [] ⟧
+    ∅
+_ = begin
+      emit 1 ∶ emit 2
+    —→⟦ 1 ⟧⟨ [SEQ-L] [EMIT] ∋ here refl ⟩
+      ∅ ∶ emit 2
+    —→⟦ 2 ⟧⟨ [SEQ-R] [EMIT] ∋ here refl ⟩
+      ∅
+    ∎
+
+-- Derivation IV: Multiple sequential
+_ : (∅ ∶ ∅ ∶ emit 1 ∶ ∅) ∶ emit 2 ∶ ∅ ∶ emit 3 ∶ ∅
+   —↠⟦ 1 ∷ 2 ∷ 3 ∷ [] ⟧
+    ∅ ∶ ∅
+_ = begin
+      (∅ ∶ ∅ ∶ emit 1 ∶ ∅) ∶ emit 2 ∶ ∅ ∶ emit 3 ∶ ∅
+    —→⟦ 1 ⟧⟨ [SEQ-L] $ [SEQ-R] $ [SEQ-R] $ [SEQ-L] [EMIT] ∋ here refl ⟩
+      (∅ ∶ ∅) ∶ emit 2 ∶ ∅ ∶ emit 3 ∶ ∅
+    —→⟦ 2 ⟧⟨ [SEQ-R] $ [SEQ-L] [EMIT] ∋ here refl ⟩
+      ∅ ∶ ∅ ∶ emit 3 ∶ ∅
+    —→⟦ 3 ⟧⟨ [SEQ-R] $ [SEQ-R] $ [SEQ-L] [EMIT] ∋ here refl ⟩
+      ∅ ∶ ∅
+    ∎
+
+-- Derivation V: Simple sequential+parallel (in-order)
 _ : emit 11 ∶ emit 12
   ∣ emit 21 ∶ emit 22
   ∣ emit 31 ∶ emit 32
   —↠⟦ 11 ∷ 12 ∷ 21 ∷ 22 ∷ 31 ∷ 32 ∷ [] ⟧
-    ∅       ∶ ∅
-  ∣ ∅       ∶ ∅
-  ∣ ∅       ∶ ∅
+    ∅
+  ∣ ∅
+  ∣ ∅
 _ =
   begin
       emit 11 ∶ emit 12
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
+  —→⟦ 11 ⟧⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
       ∅       ∶ emit 12
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] ([SEQ-R] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
+  —→⟦ 12 ⟧⟨ [STEP] ([SEQ-R] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
+      ∅
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] [EMPTY] ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
+  —→⟦ 21 ⟧⟨ [STEP] [EMPTY] ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
+      ∅
     ∣ ∅       ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] [EMPTY] ([STEP] ([SEQ-R] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+  —→⟦ 22 ⟧⟨ [STEP] [EMPTY] ([STEP] ([SEQ-R] [EMIT]) ([SEQ-L] [EMIT])) ∋ here refl ⟩
+      ∅
+    ∣ ∅
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-L] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+  —→⟦ 31 ⟧⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-L] [EMIT])) ∋ here refl ⟩
+      ∅
+    ∣ ∅
     ∣ ∅       ∶ emit 32
-  —→⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+  —→⟦ 32 ⟧⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
+      ∅
+    ∣ ∅
+    ∣ ∅
   ∎
 
+-- Derivation V': Simple sequential+parallel (out-of-order)
 _ : emit 11 ∶ emit 12
   ∣ emit 21 ∶ emit 22
   ∣ emit 31 ∶ emit 32
   —↠⟦ 21 ∷ 31 ∷ 22 ∷ 11 ∷ 12 ∷ 32 ∷ [] ⟧
-    ∅       ∶ ∅
-  ∣ ∅       ∶ ∅
-  ∣ ∅       ∶ ∅
+    ∅
+  ∣ ∅
+  ∣ ∅
 _ =
   begin
       emit 11 ∶ emit 12
     ∣ emit 21 ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ there (here refl) ⟩
+  —→⟦ 21 ⟧⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-L] [EMIT]) ([SEQ-L] [EMIT])) ∋ there (here refl) ⟩
       emit 11 ∶ emit 12
     ∣ ∅       ∶ emit 22
     ∣ emit 31 ∶ emit 32
-  —→⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-R] [EMIT]) ([SEQ-L] [EMIT])) ∋ there (there (here refl)) ⟩
+  —→⟦ 31 ⟧⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-R] [EMIT]) ([SEQ-L] [EMIT])) ∋ there (there (here refl)) ⟩
       emit 11 ∶ emit 12
     ∣ ∅       ∶ emit 22
     ∣ ∅       ∶ emit 32
-  —→⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-R] [EMIT]) ([SEQ-R] [EMIT])) ∋ there (here refl) ⟩
+  —→⟦ 22 ⟧⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] ([SEQ-R] [EMIT]) ([SEQ-R] [EMIT])) ∋ there (here refl) ⟩
       emit 11 ∶ emit 12
-    ∣ ∅       ∶ ∅
+    ∣ ∅
     ∣ ∅       ∶ emit 32
-  —→⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
+  —→⟦ 11 ⟧⟨ [STEP] ([SEQ-L] [EMIT]) ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
       ∅       ∶ emit 12
-    ∣ ∅       ∶ ∅
+    ∣ ∅
     ∣ ∅       ∶ emit 32
-  —→⟨ [STEP] ([SEQ-R] [EMIT]) ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+  —→⟦ 12 ⟧⟨ [STEP] ([SEQ-R] [EMIT]) ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
+      ∅
+    ∣ ∅
     ∣ ∅       ∶ emit 32
-  —→⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
-      ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
-    ∣ ∅       ∶ ∅
+  —→⟦ 32 ⟧⟨ [STEP] [EMPTY] ([STEP] [EMPTY] ([SEQ-R] [EMIT])) ∋ here refl ⟩
+      ∅
+    ∣ ∅
+    ∣ ∅
   ∎
 
 --------------

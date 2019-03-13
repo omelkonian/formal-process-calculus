@@ -105,7 +105,7 @@ begin_ : ∀ {P Q : Process} {ls : Trace}
   → P —↠⟦ ls ⟧ Q
 begin P—↠Q = P—↠Q
 
--- Derivation I: Simple parallel
+-- Derivation I: Simple parallel (in-order)
 _ :  emit 1 ∣ emit 2
    —↠⟦ 1 ∷ 2 ∷ [] ⟧
      ∅ ∣ ∅
@@ -114,6 +114,18 @@ _ = begin
     —→⟦ 1 ⟧⟨ [STEP-L] [EMIT] ⟩
       ∅ ∣ emit 2
     —→⟦ 2 ⟧⟨ [STEP-R] [EMIT] ⟩
+      ∅ ∣ ∅
+    ∎
+
+-- Derivation I': Simple parallel (out-of-order)
+_ :  emit 1 ∣ emit 2
+   —↠⟦ 2 ∷ 1 ∷ [] ⟧
+     ∅ ∣ ∅
+_ = begin
+      emit 1 ∣ emit 2
+    —→⟦ 2 ⟧⟨ [STEP-R] [EMIT] ⟩
+      emit 1 ∣ ∅
+    —→⟦ 1 ⟧⟨ [STEP-L] [EMIT] ⟩
       ∅ ∣ ∅
     ∎
 
@@ -379,9 +391,9 @@ _ = sound-↭
 -- Equivalence III: Nest differently
 _ : emit 11 ∶ emit 12 ∶ emit 13 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 31 ∶ emit 32 ∶ emit 33
   ≈ ((emit 11 ∶ emit 12) ∶ emit 13 ∣ (emit 21 ∶ emit 22) ∶ emit 23) ∣ (emit 31 ∶ emit 32) ∶ emit 33
-_ = sound-↭
+_ = {!!} -- sound-↭ (takes a looong time)
 
 -- Equivalence IV: Commute _∣_
 _ : emit 11 ∶ emit 12 ∶ emit 13 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 31 ∶ emit 32 ∶ emit 33
   ≈ emit 31 ∶ emit 32 ∶ emit 33 ∣ emit 21 ∶ emit 22 ∶ emit 23 ∣ emit 11 ∶ emit 12 ∶ emit 13
-_ = sound-↭
+_ = {!!} -- sound-↭ (takes a looong time)
